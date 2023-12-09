@@ -230,9 +230,6 @@ incidents_agg_unique <- burglaries_combined |>
 incidents_agg_unique
 ```
 
-
-
-
 #so it looks like what I need to do is something similar to wego, where we made a unique identifier column use time, and incident. Then aggregated those as unique incidents...
 #possibly also just group by nunique?
 
