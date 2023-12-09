@@ -24,7 +24,7 @@ burglaries <- read_csv("../data/burglaries_2023.csv")
 ```{r}
 census <- read_csv("../data/census.csv")
 ```
-Check to see how many rows there are in census tract?
+Check to see how many rows there are in census?
 ```{r}
 census %>% 
   nrow()
@@ -35,35 +35,206 @@ census %>%
 ```{r}
 dc <- st_read("../data/DC/DC.shp")
 ```
+Check to see how many rows there are in dc census tract?
+```{r}
+dc %>% 
+  distinct(TRACTCE) %>% 
+  nrow()
+```
+
+
 
 #convert burglaries into a geospatial object. We can do this using the st_as_sf function.
 ```{r}
 burglaries_converted <- st_as_sf(burglaries |> drop_na(latitude),
          coords = c('longitude', 'latitude'),
-         crs = st_crs(census)
+         crs = st_crs(dc)
          )
 ```
 
 
-Now, Perform a spatial join to determine the census tract in which each burglary occurred.
+#Now, Perform a spatial join to determine the census tract in which each burglary occurred.
 ```{r}
-burglaries_combined <- st_join(census, burglaries_converted, join = st_contains)
+burglaries_combined <- st_join(dc, burglaries_converted, join = st_contains)
 ```
 
 
-After spatial join, checking to see how many rows there are...
+#After spatial join, checking to see how many rows there are...
 ```{r}
 burglaries_combined %>% 
   distinct(TRACTCE) %>% 
   nrow()
 ```
+
+----
+There appears to be the following:
+   intplat=latitude
+   intptlon=longitude
+Q's that you may or may not answer as part of your EDA... 
+   1. why does the index follow an odd numbering schema?
+   2. Does countyfp or statefp ever change?
+   3. What is the distribution of times and days for incidents (need to convert date time...tried, but still have weird seconds thing...)
+   4. Various info on offense descriptions, weapons, victims, 
+----
+Part 2 - Exploratory Analysis
+Perform some exploratory analysis on your prepared dataset.
+
+Aggregate the data by census tract. Warning: each incident can appear multiple times if there are multiple victims, so be sure that you aren't double-counting any incidents.
+
+Which census tract had the highest number of burglaries? Which census tract had the highest number of burglaries per 1000 residents?
+
+We're interested in the relationship between median income and number of aggravated burglaries, so examine those variables on their own and together to see what you can find. You may want to perform additional calculations, create plots, etc.
+
+Initial EDA
+
 ```{r}
 summary(burglaries_combined)
+```
+
+```{r}
+burglaries_combined %>% 
+  head(2)
+```
+```{r}
+burglaries_combined %>% 
+  tail(2)
+```
+We see here that there are 174 census tracts and they are connected to geometry...
+```{r}
+census_by_tract<-burglaries_combined |> 
+  count(TRACTCE)
+census_by_tract
+```
+Note a few things about the answer above
+  "NAD 83 provides a frame of reference for latitude and longitude locations on Earth. Surveyors now rely almost exclusively on the Global Positioning System (GPS) to identify locations on the Earth and incorporate them into existing geodetic datums. For example, NAD27, NAD83, and WGS84 are the most common geodetic datums in North America."
+
+Count by time.  (How does time work in R? Do we have to do dt calcs?)
+```{r}
+count_by_time<-burglaries_combined |> 
+  count(incident_occurred)
+count_by_time
+```
+```{r}
+burglaries_combined <- burglaries_combined |> 
+  mutate(incident_difference = incident_reported - incident_occurred)
+burglaries_combined
+```
+
+
+Why doesn't this work?
+```{r}
+library(lubridate)
+burglaries_combined %>% 
+ seconds_to_period(incident_difference) 
+
+```
+
+```{r}
+
+burglaries_combined <- burglaries_combined %>% 
+ mutate(incident_difference_hrs = incident_difference/(60*60)) 
+burglaries_combined
+```
+
+```{r}
+burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(weapon_description) |> 
+  count(name = "weapons") |> 
+  arrange(desc(weapons))
+```
+
+```{r}
+burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(victim_type) |> 
+  count(name = "victim") |> 
+  arrange(desc(victim))
+```
+
+```{r}
+burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(victim_number) |> 
+  count(name = "victim") |> 
+  arrange(desc(victim))
+```
+
+```{r}
+burglaries_combined |> 
+  ggplot() +
+  geom_sf()
+```
+
+```{r}
+burglaries_combined |> 
+  ggplot() +
+  geom_sf(aes(fill = zip_code))
+```
+
+```{r}
+ggplot(burglaries_combined, aes(x=zip_code)) +
+  geom_histogram(bin=30, color='black', fill='blue') 
+```
+
+```{r}
+ggplot(burglaries_combined, aes(x=incident_difference_hrs)) +
+  geom_histogram(bin=100, color='black', fill='blue') 
+```
+
+Aggregate the data by census tract. Warning: each incident can appear multiple times if there are multiple victims, so be sure that you aren't double-counting any incidents.
+
+Initial Aggregation: (need to aggregate out individual incidents)
+```{r}
+burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(TRACTCE) |> 
+  count(name = "tract_count") |> 
+  arrange(desc(tract_count))
+
+```
+
+
+
+```{r}
+
+burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(INTPTLAT) |> 
+  count(name = "Lat") |> 
+  arrange(desc(Lat))
+
+```
+```{r}
+
+incidents_agg_count <- burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(incident_number) |> 
+  count(name = "count") |>
+  arrange(desc(count))
+incidents_agg_count
+```
+
+```{r}
+ggplot(incidents_agg_count, aes(x=count)) +
+  geom_bar( color='black', fill='blue') 
+
+```
+
+
+```{r}
+
+incidents_agg_unique <- burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(unique(incident_number)) 
+incidents_agg_unique
 ```
 
 
 
 
+#so it looks like what I need to do is something similar to wego, where we made a unique identifier column use time, and incident. Then aggregated those as unique incidents...
+#possibly also just group by nunique?
 
 
 
