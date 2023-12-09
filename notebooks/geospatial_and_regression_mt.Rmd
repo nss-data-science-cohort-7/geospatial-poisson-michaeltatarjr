@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "geospatial and regression notebook"
 output: html_notebook
 ---
 
@@ -24,6 +24,13 @@ burglaries <- read_csv("../data/burglaries_2023.csv")
 ```{r}
 census <- read_csv("../data/census.csv")
 ```
+Check to see how many rows there are in census tract?
+```{r}
+census %>% 
+  nrow()
+```
+
+
 
 ```{r}
 dc <- st_read("../data/DC/DC.shp")
@@ -33,13 +40,30 @@ dc <- st_read("../data/DC/DC.shp")
 ```{r}
 burglaries_converted <- st_as_sf(burglaries |> drop_na(latitude),
          coords = c('longitude', 'latitude'),
-         crs = st_crs(zipcodes)
+         crs = st_crs(census)
          )
 ```
 
 
-Now, make a join on the burglaries converted and census...
+Now, Perform a spatial join to determine the census tract in which each burglary occurred.
 ```{r}
-burglaries_combined <- st_join(burglaries_converted, dc, join = st_within)
+burglaries_combined <- st_join(census, burglaries_converted, join = st_contains)
 ```
+
+
+After spatial join, checking to see how many rows there are...
+```{r}
+burglaries_combined %>% 
+  distinct(TRACTCE) %>% 
+  nrow()
+```
+```{r}
+summary(burglaries_combined)
+```
+
+
+
+
+
+
 
