@@ -66,6 +66,26 @@ burglaries_combined %>%
   nrow()
 ```
 
+```{r}
+census %>% 
+  head()
+```
+
+
+
+
+
+
+
+```{r}
+burglaries_combined<- merge(burglaries_combined, census, by.x = 'TRACTCE', by.y ='tract', all = TRUE)
+```
+
+```{r}
+burglaries_combined %>% 
+  head(2)
+```
+
 ----
 There appears to be the following:
    intplat=latitude
@@ -184,37 +204,39 @@ ggplot(burglaries_combined, aes(x=incident_difference_hrs)) +
 
 Aggregate the data by census tract. Warning: each incident can appear multiple times if there are multiple victims, so be sure that you aren't double-counting any incidents.
 
-Initial Aggregation: (need to aggregate out individual incidents)
+  #Use group-by nunique?(use distinct, also it must go after groupby)
+  #filter by unique incident_number, then aggregate by TRACTCE
+
+Initial Aggregation: (before aggregating out individual incidents)
+  #note that some drop the geometry, using   st_drop_geometry() |>   not included here.  
 ```{r}
 burglaries_combined |> 
-  st_drop_geometry() |> 
   group_by(TRACTCE) |> 
-  count(name = "tract_count") |> 
-  arrange(desc(tract_count))
+  count(name = "count") |> 
+  arrange(desc(count))
 
 ```
-
-
-
+Secondary Aggregation: (after aggregating out individual incidents)
+Burglaries aggregated by incident number...
+#note that some drop the geometry, using   st_drop_geometry() |>   not included here.  
 ```{r}
-
 burglaries_combined |> 
-  st_drop_geometry() |> 
-  group_by(INTPTLAT) |> 
-  count(name = "Lat") |> 
-  arrange(desc(Lat))
+  group_by(TRACTCE) |> 
+  distinct(incident_number) |> 
+  count(name = "incident_number") |> 
+  arrange(desc(incident_number))
 
 ```
+Incident_number counts
 ```{r}
-
 incidents_agg_count <- burglaries_combined |> 
-  st_drop_geometry() |> 
   group_by(incident_number) |> 
   count(name = "count") |>
   arrange(desc(count))
 incidents_agg_count
 ```
 
+looking at the count of incident numbers graphically.  
 ```{r}
 ggplot(incidents_agg_count, aes(x=count)) +
   geom_bar( color='black', fill='blue') 
@@ -222,16 +244,39 @@ ggplot(incidents_agg_count, aes(x=count)) +
 ```
 
 
+Which census tract had the highest number of burglaries?  
+(016000)
+
+Which census tract had the highest number of burglaries per 1000 residents?
+  #to get this number we have to subset number of incidents by population.  Perhaps this is best done with a separate column...
+
 ```{r}
 
-incidents_agg_unique <- burglaries_combined |> 
-  st_drop_geometry() |> 
-  group_by(unique(incident_number)) 
-incidents_agg_unique
+burglaries_combined |> 
+  group_by(TRACTCE) |> 
+  distinct(incident_number) |> 
+  count(name = "incident_numbers") |> 
+  mutate(incidents_by_pop = "incident_numbers"/'population') |> 
+  arrange(desc(incident_numbers))
+
 ```
 
-#so it looks like what I need to do is something similar to wego, where we made a unique identifier column use time, and incident. Then aggregated those as unique incidents...
-#possibly also just group by nunique?
+The above error means that I am trying to divide between a numeric and non numeric operator.
+  #check for class in pop column, shows it is numeric...
+  #it looks like it is the count column.  Can we recast this or add a column into the df?
+```{r}
+class(burglaries_combined$popuation)
+```
+
+
+
+
+
+
+
+We're interested in the relationship between median income and number of aggravated burglaries, so examine those variables on their own and together to see what you can find. You may want to perform additional calculations, create plots, etc
+
+
 
 
 
