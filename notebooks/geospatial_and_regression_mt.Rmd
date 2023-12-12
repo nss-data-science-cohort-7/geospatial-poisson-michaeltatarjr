@@ -219,8 +219,9 @@ burglaries_combined |>
 Secondary Aggregation: (after aggregating out individual incidents)
 Burglaries aggregated by incident number...
 #note that some drop the geometry, using   st_drop_geometry() |>   not included here.  
+(You could take this and then make another one that subsets out the population and knit it together...)
 ```{r}
-burglaries_combined |> 
+burglaries_count_per <- burglaries_combined |> 
   group_by(TRACTCE) |> 
   distinct(incident_number) |> 
   count(name = "incident_number") |> 
@@ -247,36 +248,69 @@ ggplot(incidents_agg_count, aes(x=count)) +
 Which census tract had the highest number of burglaries?  
 (016000)
 
-Which census tract had the highest number of burglaries per 1000 residents?
+Which census tract had the highest number of burglaries per 1000 residents? (016000) (unless you count the two tracts with no population, then 980100...)
   #to get this number we have to subset number of incidents by population.  Perhaps this is best done with a separate column...
 
-```{r}
 
+```{r}
+burglaries_pop <- burglaries_combined |>
+  select(TRACTCE, population)|>
+  group_by(TRACTCE) |> 
+  distinct(population) 
+```
+
+```{r}
 burglaries_combined |> 
   group_by(TRACTCE) |> 
   distinct(incident_number) |> 
-  count(name = "incident_numbers") |> 
-  mutate(incidents_by_pop = "incident_numbers"/'population') |> 
-  arrange(desc(incident_numbers))
-
+  count(name = "incident_number") |> 
+  arrange(desc(incident_number))
 ```
 
-The above error means that I am trying to divide between a numeric and non numeric operator.
-  #check for class in pop column, shows it is numeric...
-  #it looks like it is the count column.  Can we recast this or add a column into the df?
+```{r} 
+burglaries_joined <- merge(burglaries_count_per, burglaries_pop)
+
+```
 ```{r}
-class(burglaries_combined$popuation)
+burglaries_joined <- burglaries_joined %>% 
+  mutate(burglaries_per_capita = population/incident_number) %>% 
+  arrange(burglaries_per_capita)
 ```
-
-
-
-
-
 
 
 We're interested in the relationship between median income and number of aggravated burglaries, so examine those variables on their own and together to see what you can find. You may want to perform additional calculations, create plots, etc
 
+```{r}
+
+ggplot(burglaries_joined, aes(x=population, y=burglaries_per_capita)) +
+  geom_point() 
 
 
+
+```
+```{r}
+burglaries_median <- burglaries_combined |>
+  select(TRACTCE, median_income, geometry) |>
+  group_by(TRACTCE) |> 
+  distinct(median_income) 
+burglaries_median
+```
+```{r} 
+burglaries_joined <- merge(burglaries_joined, burglaries_median)
+
+burglaries_joined
+  head(2)
+```
+
+
+(need to subset some of the data here.  There are several observations that are -666666666 in median income...)
+```{r}
+
+ggplot(burglaries_joined, aes( x=burglaries_per_capita, y=median_income)) +
+  geom_point() 
+
+
+
+```
 
 
