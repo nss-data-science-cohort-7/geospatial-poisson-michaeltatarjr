@@ -15,6 +15,8 @@ After performing the spatial join, merge in the census data. Note: Make sure tha
 ```{r}
 library(sf)
 library(tidyverse)
+library(lubridate)
+library(leaflet)
 ```
 
 ```{r}
@@ -197,10 +199,6 @@ ggplot(burglaries_combined, aes(x=zip_code)) +
   geom_histogram(bin=30, color='black', fill='blue') 
 ```
 
-```{r}
-ggplot(burglaries_combined, aes(x=incident_difference_hrs)) +
-  geom_histogram(bin=100, color='black', fill='blue') 
-```
 
 Aggregate the data by census tract. Warning: each incident can appear multiple times if there are multiple victims, so be sure that you aren't double-counting any incidents.
 
@@ -226,7 +224,7 @@ burglaries_count_per <- burglaries_combined |>
   distinct(incident_number) |> 
   count(name = "incident_number") |> 
   arrange(desc(incident_number))
-
+burglaries_count_per
 ```
 Incident_number counts
 ```{r}
@@ -271,21 +269,20 @@ burglaries_combined |>
 burglaries_joined <- merge(burglaries_count_per, burglaries_pop)
 
 ```
+
 ```{r}
 burglaries_joined <- burglaries_joined %>% 
   mutate(burglaries_per_capita = population/incident_number) %>% 
   arrange(burglaries_per_capita)
+burglaries_joined
 ```
 
 
 We're interested in the relationship between median income and number of aggravated burglaries, so examine those variables on their own and together to see what you can find. You may want to perform additional calculations, create plots, etc
 
 ```{r}
-
 ggplot(burglaries_joined, aes(x=population, y=burglaries_per_capita)) +
-  geom_point() 
-
-
+  geom_point(color='darkblue', fill='black') 
 
 ```
 ```{r}
@@ -298,19 +295,155 @@ burglaries_median
 ```{r} 
 burglaries_joined <- merge(burglaries_joined, burglaries_median)
 
-burglaries_joined
-  head(2)
+burglaries_joined %>% 
+  arrange(desc(incident_number))
 ```
 
 
 (need to subset some of the data here.  There are several observations that are -666666666 in median income...)
 ```{r}
+burglaries_joined<- burglaries_joined %>% 
+  filter(median_income > 0) %>% 
+  arrange(desc(median_income))
+```
 
-ggplot(burglaries_joined, aes( x=burglaries_per_capita, y=median_income)) +
-  geom_point() 
 
 
+```{r}
+
+ggplot(burglaries_joined, aes( x=incident_number, y=median_income, hue=population)) +
+  geom_point(color='darkblue') 
 
 ```
 
+(Map with burglaries. Darker is more incidents.)
+
+```{r}
+incidents_agg_count %>% 
+  ggplot() +
+  geom_sf(aes(fill = incident_number))
+```
+
+Part 3 - Statistical Modeling
+Fit a Poisson regression model with target variable the rate of burglaries per census tract and with predictor the median income. Offset using the log of the population so that we are looking at the rate of burglaries per population instead of the number of burglaries. How can you interpret the meaning of the output? How do the estimates from the model compare to the observed data?
+
+target variable the rate of burglaries per census tract 
+   #I assume this means we are using time?
+   #In the example the 'rate' was just the count of the visits
+   #Ran here without a time component, just using number of unique incidents per tract
+
+```{r}
+burglaries_joined |> 
+  ggplot(aes(x = incident_number)) + 
+  geom_bar(color='black', fill='blue')
+```
+
+```{r}
+
+pois_num_1 <- glm('incident_number ~ median_income',
+               data = burglaries_joined,
+               family = poisson)
+summary(pois_num_1)
+
+```
+
+Coefficients
+for a one unit change in median_income, the difference in the logs of expected counts of burglaries is expected to change by -1.958e-05
+Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00001958.
+
+
+
+Let's see what it estimates for the mean number of the distribution:
+```{r}
+mu = exp(coef(pois_num_1 ))
+```
+
+
+And plot the result. (these are means...)
+```{r}
+x <- 0:35
+y <- dpois(x, lambda = mu)
+
+tibble(x = x, y = y) |> 
+  ggplot(aes(x = x, y = y)) + 
+  geom_col(color='black', fill='green')
+```
+So just so we're clear here, this means there are 40 tracts with 1 incident report, and 24 tracts with 2...1 tract with 39.
+```{r}
+burglaries_joined|> 
+  count(incident_number)
+```
+
+Offset using the log of the population so that we are looking at the rate of burglaries per population instead of the number of burglaries
+
+```{r}
+burglaries_joined <- burglaries_joined |> 
+  mutate(poplog = log10(population))
+
+```
+
+
+```{r}
+pois_num_2 <- glm('incident_number ~ median_income',
+               data = burglaries_joined,
+               family = poisson,
+               offset = log(population))
+summary(pois_num_2)
+```
+
+```{r}
+pois_num_3 <- glm('incident_number ~ median_income',
+               data = burglaries_joined,
+               family = poisson,
+               offset = poplog)
+summary(pois_num_3)
+
+```
+
+```{r}
+burglaries_joined |> 
+  mutate(group = ntile(median_income, n = 10)) |> 
+  group_by(group) |> 
+  summarize(
+    median_income = median(median_income),
+    median_incident_number = median(incident_number)
+    )
+```
+
+```{r}
+burglaries_joined |> 
+  mutate(group = ntile(median_income, n = 10)) |> 
+  group_by(group) |> 
+  ggplot(aes(x = incident_number)) +
+  geom_bar(color='black', fill='darkred') +
+  facet_wrap(~group)
+```
+
+```{r}
+
+burglaries_joined<- burglaries_joined |> 
+  mutate(group = ntile(median_income, n = 5))
+```
+
+
+```{r}
+mu3 = exp(coef(pois_num_3 ))
+```
+
+
+And plot the result. (these are means...)
+```{r}
+x <- 0:35
+y <- dpois(x, lambda = mu3)
+
+tibble(x = x, y = y) |> 
+  ggplot(aes(x = x, y = y)) + 
+  geom_col(color='black', fill='orange')
+```
+
+```{r}
+
+ggplot(burglaries_joined, aes( x=incident_number, y=poplog, hue=group)) +
+  geom_point(color='darkblue') 
+```
 
