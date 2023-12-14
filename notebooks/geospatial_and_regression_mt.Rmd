@@ -340,6 +340,15 @@ burglaries_joined |>
 
 ```{r}
 
+pois_num_0 <- glm('incident_number ~ 1',
+               data = burglaries_joined,
+               family = poisson)
+summary(pois_num_0)
+
+```
+
+```{r}
+
 pois_num_1 <- glm('incident_number ~ median_income',
                data = burglaries_joined,
                family = poisson)
@@ -348,10 +357,14 @@ summary(pois_num_1)
 ```
 
 Coefficients
-for a one unit change in median_income, the difference in the logs of expected counts of burglaries is expected to change by -1.958e-05
-Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00001958.
-
-
+(To get the estimates for something in a poisson, you have to exponentiate the results to get the average)
+For a one unit change in median_income, the difference in the logs of expected counts of burglaries is expected to change by -1.958e-05
+Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00001958 in logs of expected counts.
+Oftentimes the poisson results are converted to 'incident response ratios' (IRR) this is done by taking the exponential of the result
+or exp(-1.958e-05) = .99998402.  This represents the multiplicative change in the expected count for a one-unit increase in the predictor.
+So, another way to interpret this is to say that for every one-unit increase in median income, the IRR decreases by 0.99998042, or a little less than one percent. 
+Finally, For every one-unit increase in "median_income," the expected count of the response variable is multiplied by approximately
+Further, AIC. Stands for Akaike information criterion.  Basically, the lower the AIC, the better the model fit. Compare to the other 3 pois_reg for fit comparisons...
 
 Let's see what it estimates for the mean number of the distribution:
 ```{r}
@@ -361,14 +374,14 @@ mu = exp(coef(pois_num_1 ))
 
 And plot the result. (these are means...)
 ```{r}
-x <- 0:35
+x <- 0:39
 y <- dpois(x, lambda = mu)
 
 tibble(x = x, y = y) |> 
   ggplot(aes(x = x, y = y)) + 
   geom_col(color='black', fill='green')
 ```
-So just so we're clear here, this means there are 40 tracts with 1 incident report, and 24 tracts with 2...1 tract with 39.
+So just so we're clear here, this means there are 40 tracts with 1 incident report, and 24 tracts with 2...1 tract with 39. And, in the above graph we're taking the means of all of those as a percentage of the total.
 ```{r}
 burglaries_joined|> 
   count(incident_number)
@@ -390,6 +403,8 @@ pois_num_2 <- glm('incident_number ~ median_income',
                offset = log(population))
 summary(pois_num_2)
 ```
+
+For every one unit increase of median_income, the IRR decreases by 
 
 ```{r}
 pois_num_3 <- glm('incident_number ~ median_income',
@@ -443,7 +458,33 @@ tibble(x = x, y = y) |>
 
 ```{r}
 
-ggplot(burglaries_joined, aes( x=incident_number, y=poplog, hue=group)) +
+ggplot(burglaries_joined, aes( x=incident_number, y=population, hue=group)) +
   geom_point(color='darkblue') 
+```
+
+
+
+```{r}
+est_df <- tibble(
+  median_income = seq(from = min(burglaries_joined$median_income, na.rm = TRUE), 
+                          to = max(burglaries_joined$median_income, na.rm = TRUE), 
+                          length.out = 100),
+  population = seq(from = min(burglaries_joined$population, na.rm = TRUE), 
+                          to = max(burglaries_joined$population, na.rm = TRUE), 
+                          length.out = 100),    )
+
+est_df <- est_df %>%  
+  bind_cols(predict(pois_num_2, newdata = est_df, type = "response")) %>% 
+  rename("Estimated Mean Number of Incidents" = "...3")
+
+ggplot(est_df) +
+  geom_line(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_point(data = burglaries_joined, aes(x=median_income, y=incident_number))
+           
+```
+```{r}
+est_df %>%  
+  ggplot(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_line(color = 'green')
 ```
 
