@@ -75,10 +75,6 @@ census %>%
 
 
 
-
-
-
-
 ```{r}
 burglaries_combined<- merge(burglaries_combined, census, by.x = 'TRACTCE', by.y ='tract', all = TRUE)
 ```
@@ -143,13 +139,6 @@ burglaries_combined
 ```
 
 
-Why doesn't this work?
-```{r}
-library(lubridate)
-burglaries_combined %>% 
- seconds_to_period(incident_difference) 
-
-```
 
 ```{r}
 
@@ -160,13 +149,20 @@ burglaries_combined %>%
 ```
 
 ```{r}
-burglaries_combined |> 
+incident_times<- burglaries_combined |> 
   st_drop_geometry() |> 
   group_by(TRACTCE) %>% 
   distinct(incident_difference_hrs) %>% 
   arrange(desc(incident_difference_hrs))
   
 ```
+
+```{r}
+ggplot(incident_times, aes(x=TRACTCE, y=incident_difference_hrs)) +
+  geom_point(color='darkblue', fill='black') 
+
+```
+
 
 ```{r}
 
@@ -309,6 +305,7 @@ ggplot(burglaries_joined, aes(x=population, y=burglaries_per_capita)) +
   geom_point(color='darkblue', fill='black') 
 
 ```
+
 ```{r}
 burglaries_median <- burglaries_combined |>
   select(TRACTCE, median_income, geometry) |>
@@ -316,6 +313,7 @@ burglaries_median <- burglaries_combined |>
   distinct(median_income) 
 burglaries_median
 ```
+
 ```{r} 
 burglaries_joined <- merge(burglaries_joined, burglaries_median)
 
@@ -340,7 +338,7 @@ summary(burgs_lm)
 
 ```{r}
 
-ggplot(burglaries_joined, aes( x=incident_number, y=median_income)) +
+ggplot(burglaries_joined, aes( x=median_income, y=incident_number)) +
   geom_point(color='darkblue') 
 
 ```
@@ -500,8 +498,8 @@ tibble(x = x, y = y) |>
 
 ```{r}
 
-ggplot(burglaries_joined, aes( x=incident_number, y=population, hue=group)) +
-  geom_point(color='darkblue') 
+ggplot(burglaries_joined, aes( x=population, y=incident_number, hue=group)) +
+  geom_point() 
 ```
 
 
@@ -543,7 +541,7 @@ summary(pois_num_5)
 
 
 ```{r}
-est_df <- tibble(
+est_df_1 <- tibble(
   median_income = seq(from = min(burglaries_joined$median_income, na.rm = TRUE), 
                           to = max(burglaries_joined$median_income, na.rm = TRUE), 
                           length.out = 100),
@@ -551,17 +549,17 @@ est_df <- tibble(
                           to = max(burglaries_joined$population, na.rm = TRUE), 
                           length.out = 100),    )
 
-est_df <- est_df %>%  
+est_df_1 <- est_df_1 %>%  
   bind_cols(predict(pois_num_5, newdata = est_df, type = "response")) %>% 
   rename("Estimated Mean Number of Incidents" = "...3")
 
-ggplot(est_df) +
+ggplot(est_df_1) +
   geom_line(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
   geom_point(data = burglaries_joined, aes(x=median_income, y=incident_number))
     
 ```
 ```{r}
-est_df %>%  
+est_df_1 %>%  
   ggplot(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
   geom_line(color = 'orange')
 ```
