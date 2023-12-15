@@ -155,8 +155,30 @@ burglaries_combined %>%
 
 burglaries_combined <- burglaries_combined %>% 
  mutate(incident_difference_hrs = incident_difference/(60*60)) 
-burglaries_combined
+burglaries_combined %>% 
+  head(2)
 ```
+
+```{r}
+burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(TRACTCE) %>% 
+  distinct(incident_difference_hrs) %>% 
+  arrange(desc(incident_difference_hrs))
+  
+```
+
+```{r}
+
+burglaries_combined |> 
+  st_drop_geometry() |> 
+  group_by(TRACTCE) %>% 
+  distinct(incident_difference_hrs) %>% 
+  arrange(incident_difference_hrs)
+  
+```
+
+
 
 ```{r}
 burglaries_combined |> 
@@ -191,8 +213,10 @@ burglaries_combined |>
 ```{r}
 burglaries_combined |> 
   ggplot() +
-  geom_sf(aes(fill = zip_code))
+  geom_sf(aes(fill = TRACTCE))
 ```
+
+Need to pop the map out to see it...
 
 ```{r}
 ggplot(burglaries_combined, aes(x=zip_code)) +
@@ -307,11 +331,16 @@ burglaries_joined<- burglaries_joined %>%
   arrange(desc(median_income))
 ```
 
+The graph below looks to be sort of linear, in a negative fashion...maybe fit a linear regression to it?
+```{r}
+burgs_lm <- lm("incident_number ~ median_income", data = burglaries_joined)
 
+summary(burgs_lm)
+```
 
 ```{r}
 
-ggplot(burglaries_joined, aes( x=incident_number, y=median_income, hue=population)) +
+ggplot(burglaries_joined, aes( x=incident_number, y=median_income)) +
   geom_point(color='darkblue') 
 
 ```
@@ -322,7 +351,14 @@ ggplot(burglaries_joined, aes( x=incident_number, y=median_income, hue=populatio
 incidents_agg_count %>% 
   ggplot() +
   geom_sf(aes(fill = incident_number))
+  
 ```
+
+```{r}
+incidents_agg_count %>% 
+  head(2)
+```
+
 
 Part 3 - Statistical Modeling
 Fit a Poisson regression model with target variable the rate of burglaries per census tract and with predictor the median income. Offset using the log of the population so that we are looking at the rate of burglaries per population instead of the number of burglaries. How can you interpret the meaning of the output? How do the estimates from the model compare to the observed data?
@@ -346,6 +382,7 @@ pois_num_0 <- glm('incident_number ~ 1',
 summary(pois_num_0)
 
 ```
+Above is the constant only model.  Note the AIC is quite high, 
 
 ```{r}
 
@@ -358,13 +395,17 @@ summary(pois_num_1)
 
 Coefficients
 (To get the estimates for something in a poisson, you have to exponentiate the results to get the average)
+
 For a one unit change in median_income, the difference in the logs of expected counts of burglaries is expected to change by -1.958e-05
-Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00001958 in logs of expected counts.
+Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00001958 in the log of expected counts.
+
 Oftentimes the poisson results are converted to 'incident response ratios' (IRR) this is done by taking the exponential of the result
 or exp(-1.958e-05) = .99998402.  This represents the multiplicative change in the expected count for a one-unit increase in the predictor.
-So, another way to interpret this is to say that for every one-unit increase in median income, the IRR decreases by 0.99998042, or a little less than one percent. 
-Finally, For every one-unit increase in "median_income," the expected count of the response variable is multiplied by approximately
-Further, AIC. Stands for Akaike information criterion.  Basically, the lower the AIC, the better the model fit. Compare to the other 3 pois_reg for fit comparisons...
+So, another way to interpret this is to say that for every one-unit increase in median income, the IRR decreases by 0.99998042, or a little less than one percent. (that can't be right? unless it goes to 10000 and then starts over?)
+
+AIC=Stands for Akaike Information Criterion.  Basically, the lower the AIC, the better the model fit. Compare to the other 3 pois_reg for fit comparisons...
+
+Number of Fisher Scoring iterations is a count of how long it took to fit the model.  Safely ignore...
 
 Let's see what it estimates for the mean number of the distribution:
 ```{r}
@@ -404,8 +445,9 @@ pois_num_2 <- glm('incident_number ~ median_income',
 summary(pois_num_2)
 ```
 
-For every one unit increase of median_income, the IRR decreases by 
-
+For a one unit change in median_income, the difference in the logs of expected counts of burglaries is expected to change by -1.958e-05
+Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00002326 in the log of expected counts.
+  #Note that the results are alittle different, even though they should be the same...
 ```{r}
 pois_num_3 <- glm('incident_number ~ median_income',
                data = burglaries_joined,
@@ -487,4 +529,43 @@ est_df %>%
   ggplot(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
   geom_line(color = 'green')
 ```
+
+
+```{r}
+pois_num_5 <- glm('incident_number ~ median_income',
+               data = burglaries_joined,
+               family = quasipoisson(),
+               offset = log(population))
+summary(pois_num_5)
+```
+
+
+
+
+```{r}
+est_df <- tibble(
+  median_income = seq(from = min(burglaries_joined$median_income, na.rm = TRUE), 
+                          to = max(burglaries_joined$median_income, na.rm = TRUE), 
+                          length.out = 100),
+  population = seq(from = min(burglaries_joined$population, na.rm = TRUE), 
+                          to = max(burglaries_joined$population, na.rm = TRUE), 
+                          length.out = 100),    )
+
+est_df <- est_df %>%  
+  bind_cols(predict(pois_num_5, newdata = est_df, type = "response")) %>% 
+  rename("Estimated Mean Number of Incidents" = "...3")
+
+ggplot(est_df) +
+  geom_line(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_point(data = burglaries_joined, aes(x=median_income, y=incident_number))
+    
+```
+```{r}
+est_df %>%  
+  ggplot(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_line(color = 'orange')
+```
+
+
+
 
