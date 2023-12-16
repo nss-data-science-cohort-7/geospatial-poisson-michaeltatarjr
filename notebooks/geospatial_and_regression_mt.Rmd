@@ -17,6 +17,8 @@ library(sf)
 library(tidyverse)
 library(lubridate)
 library(leaflet)
+library(MASS)
+
 ```
 
 ```{r}
@@ -269,10 +271,16 @@ Which census tract had the highest number of burglaries?
 Which census tract had the highest number of burglaries per 1000 residents? (016000) (unless you count the two tracts with no population, then 980100...)
   #to get this number we have to subset number of incidents by population.  Perhaps this is best done with a separate column...
 
-
+#What was I doing here? Code no longer runs...trying to get the population... and the tract
 ```{r}
+#burglaries_pop <- burglaries_combined |>
+#  select(TRACTCE, population)|>
+#  group_by(TRACTCE) |> 
+#  distinct(TRACTCE) 
+
 burglaries_pop <- burglaries_combined |>
-  select(TRACTCE, population)|>
+  st_drop_geometry() |>
+  dplyr::select(TRACTCE, population) |>
   group_by(TRACTCE) |> 
   distinct(population) 
 ```
@@ -308,7 +316,7 @@ ggplot(burglaries_joined, aes(x=population, y=burglaries_per_capita)) +
 
 ```{r}
 burglaries_median <- burglaries_combined |>
-  select(TRACTCE, median_income, geometry) |>
+  dplyr::select(TRACTCE, median_income, geometry) |>
   group_by(TRACTCE) |> 
   distinct(median_income) 
 burglaries_median
@@ -339,7 +347,7 @@ summary(burgs_lm)
 ```{r}
 
 ggplot(burglaries_joined, aes( x=median_income, y=incident_number)) +
-  geom_point(color='darkblue') 
+  geom_point(color='darkblue')
 
 ```
 
@@ -392,14 +400,24 @@ summary(pois_num_1)
 ```
 
 Coefficients
-(To get the estimates for something in a poisson, you have to exponentiate the results to get the average)
+(To get the estimates for something in a poisson, you have to exponentiate the results to get the average...)
+
+The intercept represents the expected log-count of burglaries when all other predictor variables are zero.
+In this case, when all other predictor variables are zero, the expected log-count of burglaries is approximately 2.855.
+Since this is a log-count, to interpret it in terms of count, you would exponentiate it. So, exp(2.855) gives you the expected count of burglaries.
 
 For a one unit change in median_income, the difference in the logs of expected counts of burglaries is expected to change by -1.958e-05
-Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00001958 in the log of expected counts.
+Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00001958.
+
+A good way to think about this is by 0.00001958. and times by 10k...
 
 Oftentimes the poisson results are converted to 'incident response ratios' (IRR) this is done by taking the exponential of the result
 or exp(-1.958e-05) = .99998402.  This represents the multiplicative change in the expected count for a one-unit increase in the predictor.
 So, another way to interpret this is to say that for every one-unit increase in median income, the IRR decreases by 0.99998042, or a little less than one percent. (that can't be right? unless it goes to 10000 and then starts over?)
+
+With large p values, we can say that both variables are statistically significant.
+
+Note to that the std errors are small...
 
 AIC=Stands for Akaike Information Criterion.  Basically, the lower the AIC, the better the model fit. Compare to the other 3 pois_reg for fit comparisons...
 
@@ -426,6 +444,25 @@ burglaries_joined|>
   count(incident_number)
 ```
 
+```{r}
+median_income <- seq(from = 20000, to = 180000, length.out = 5)
+
+map(median_income, 
+    \(x) tibble(median_income = x, 
+                num_burglaries = 0:20, 
+                probability = dpois(0:20, 
+                                      lambda = predict(pois_num_2,
+                                                   newdata = tibble(median_income = x, population = 4000), type = "response")
+                                    )
+                )
+    ) |> 
+  bind_rows() |> 
+  ggplot(aes(x = num_burglaries, y = probability)) +
+  geom_col() +
+  facet_wrap(~median_income)
+```
+
+
 Offset using the log of the population so that we are looking at the rate of burglaries per population instead of the number of burglaries
 
 ```{r}
@@ -442,6 +479,7 @@ pois_num_2 <- glm('incident_number ~ median_income',
                offset = log(population))
 summary(pois_num_2)
 ```
+(Reminder: Degrees of Freedom are the maximum number of logically independent values, which may vary, in a data sample)
 
 For a one unit change in median_income, the difference in the logs of expected counts of burglaries is expected to change by -1.958e-05
 Or, for every dollar increase in median income, burglaries are expected to decrease by 0.00002326 in the log of expected counts.
@@ -453,6 +491,11 @@ pois_num_3 <- glm('incident_number ~ median_income',
                offset = poplog)
 summary(pois_num_3)
 
+```
+Compare model fit using deviance.  The lower the number, the better...Here we can say that the deviance score between pois_num_2 and pois_num_3 dropped by 39.285.  Thusly, model# 3 fit better. 
+```{r}
+drop_in_dev<- anova(pois_num_2, pois_num_3, test = "Chisq")
+drop_in_dev
 ```
 
 ```{r}
@@ -498,7 +541,7 @@ tibble(x = x, y = y) |>
 
 ```{r}
 
-ggplot(burglaries_joined, aes( x=population, y=incident_number, hue=group)) +
+ggplot(burglaries_joined, aes( x=population, y=incident_number, color='brown')) +
   geom_point() 
 ```
 
@@ -527,7 +570,8 @@ est_df %>%
   ggplot(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
   geom_line(color = 'green')
 ```
-
+dispersion parameter is high in the below model, indicating overdispersion (= extra variance...)  It's interesting that graphically the fit is almost the same as the standard
+poisson model.  Intuition says there is likely a better fit with negative binomial...
 
 ```{r}
 pois_num_5 <- glm('incident_number ~ median_income',
@@ -536,8 +580,6 @@ pois_num_5 <- glm('incident_number ~ median_income',
                offset = log(population))
 summary(pois_num_5)
 ```
-
-
 
 
 ```{r}
@@ -550,7 +592,7 @@ est_df_1 <- tibble(
                           length.out = 100),    )
 
 est_df_1 <- est_df_1 %>%  
-  bind_cols(predict(pois_num_5, newdata = est_df, type = "response")) %>% 
+  bind_cols(predict(pois_num_5, newdata = est_df_1, type = "response")) %>% 
   rename("Estimated Mean Number of Incidents" = "...3")
 
 ggplot(est_df_1) +
@@ -564,6 +606,48 @@ est_df_1 %>%
   geom_line(color = 'orange')
 ```
 
+Below is the negative binomial.  Note that it gives a significantly lower AIC score!
 
+```{r}
+neg_bin_1 <- glm.nb('incident_number ~ median_income',
+               data = burglaries_joined)
+summary(neg_bin_1)
+```
+
+
+
+
+
+```{r}
+est_df_2 <- tibble(
+  median_income = seq(from = min(burglaries_joined$median_income, na.rm = TRUE), 
+                          to = max(burglaries_joined$median_income, na.rm = TRUE), 
+                          length.out = 100),
+  population = seq(from = min(burglaries_joined$population, na.rm = TRUE), 
+                          to = max(burglaries_joined$population, na.rm = TRUE), 
+                          length.out = 100),    )
+
+est_df_2 <- est_df_2 %>%  
+  bind_cols(predict(neg_bin_1, newdata = est_df_2, type = "response")) %>% 
+  rename("Estimated Mean Number of Incidents" = "...3")
+
+ggplot(est_df_2) +
+  geom_line(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_point(data = burglaries_joined, aes(x=median_income, y=incident_number))
+    
+```
+```{r}
+est_df_2 %>%  
+  ggplot(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_line(color = 'orange')
+```
+Comparing goodness of fit with deviance scores, using the Chi squared test.
+a deviance residual describes how the observed data deviates from the fitted model.
+Note the VERY large drop in deviance. Almost 310 pts. This is a significant increase in model fit!
+
+```{r}
+drop_in_dev<- anova(pois_num_3, neg_bin_1, test = "Chisq")
+drop_in_dev
+```
 
 
